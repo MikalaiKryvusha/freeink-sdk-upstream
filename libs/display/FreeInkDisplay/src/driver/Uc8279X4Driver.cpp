@@ -605,7 +605,6 @@ void Uc8279X4Driver::displayFinish(EpdBus& bus, const uint8_t* fb) {
   _pendingRefresh = false;
 
   bus.waitRefreshComplete(" 8279x4_DRF");
-  _lastBwDoneMs = millis();
   if (_pendingPartial) bus.cmd(CMD_PARTIAL_OUT);
 
   // Sync the OLD plane (0x10) with the just-displayed frame so the NEXT partial
@@ -742,21 +741,6 @@ void Uc8279X4Driver::copyGrayscaleMsb(EpdBus& bus, const uint8_t* msb) {
 void Uc8279X4Driver::displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff, const unsigned char* lut,
                                  bool factoryMode) {
   (void)lut;
-
-  // Gray image settle (device 2026-11-04): a B/W frame shown for ~1 s right before a gray image (the sleep popup,
-  // the menu's header line) prints into the gray. On B/W the leftover drive voltage drains in about a second without
-  // a visible trace (a saturated pixel has nowhere to drift); a gray pixel stopped halfway drifts with it and keeps
-  // the shift. So before an image pass: analog power off (the power-off sequence discharges the rails), then let the
-  // remainder of the settle time pass since the last B/W refresh finished.
-  if (_directGrayPass || _absoluteInput || factoryMode || _grayImagePass) {
-    if (_isScreenOn) {
-      bus.cmd(CMD_POWER_OFF);
-      bus.waitBusy(" 8279x4_gray_settle_POF");
-      _isScreenOn = false;
-    }
-    const unsigned long since = millis() - _lastBwDoneMs;
-    if (since < FREEINK_UC8279X4_GRAY_SETTLE_MS) delay(FREEINK_UC8279X4_GRAY_SETTLE_MS - since);
-  }
 
   // Vendor AA sequence: PSR (REG=1) -> [planes already in RAM via
   // copyGrayscale*] -> 5x49 LUTs -> CDI (constant 0x97) -> PON -> PSR rewrite ->

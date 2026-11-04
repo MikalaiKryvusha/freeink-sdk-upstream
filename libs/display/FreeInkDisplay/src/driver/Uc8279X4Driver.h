@@ -23,11 +23,6 @@
 
 #include "PanelDriver.h"
 
-// Settle time between the last B/W refresh and a gray image pass (see displayGray).
-#ifndef FREEINK_UC8279X4_GRAY_SETTLE_MS
-#define FREEINK_UC8279X4_GRAY_SETTLE_MS 1500
-#endif
-
 namespace freeink {
 
 struct Uc8279X4Config {
@@ -160,7 +155,6 @@ class Uc8279X4Driver : public PanelDriver {
   uint32_t _bufferSize;
 
   bool _isScreenOn = false;
-  unsigned long _lastBwDoneMs = 0;  // millis() when the last B/W refresh finished
   bool _needFullClear = true;
   bool _oldPlaneValid = false;
 
