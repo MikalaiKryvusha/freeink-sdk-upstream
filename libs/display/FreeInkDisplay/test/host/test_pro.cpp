@@ -740,6 +740,40 @@ static void testUc8279DrivingRect() {
 #endif
 }
 
+// UC8279 X4 Pro: a gray IMAGE pass powers the panel off and lets the settle time pass after the last B/W refresh
+// before its DRF (the 1 s sleep popup printed into the sleep image); sparse glyph AA keeps the stock immediate DRF.
+static void testUc8279X4GraySettle() {
+  const auto bw = frame(11);
+  const auto run = [&](uint8_t mask, unsigned long& waited) {
+    Uc8279X4Driver driver;
+    EpdBus bus;
+    driver.begin(bus);
+    driver.display(bus, bw.data(), nullptr, RefreshMode::Half, false);
+    assert(driver._isScreenOn);
+    Bytes lsb(48000, 0), msb(48000, mask);
+    driver.beginGrayscale(bus, bw.data(), GrayscaleMode::Overlay, RefreshMode::Fast, false);
+    driver.copyGrayscaleLsb(bus, lsb.data());
+    driver.copyGrayscaleMsb(bus, msb.data());
+    bus.clear();
+    const unsigned long before = fakeDelayMs;
+    driver.displayGray(bus, bw.data(), false, nullptr, false);
+    waited = fakeDelayMs - before;
+    size_t pof = SIZE_MAX, pon = SIZE_MAX, drf = SIZE_MAX;
+    for (size_t i = 0; i < bus.writes.size(); ++i) {
+      if (bus.writes[i].command == 0x02 && pof == SIZE_MAX) pof = i;
+      if (bus.writes[i].command == 0x04 && pon == SIZE_MAX) pon = i;
+      if (bus.writes[i].command == 0x12 && drf == SIZE_MAX) drf = i;
+    }
+    assert(drf != SIZE_MAX);
+    return std::make_pair(pof < drf, pon < drf);
+  };
+  unsigned long waited = 0;
+  const auto image = run(0xFF, waited);  // every pixel gray: an image pass
+  assert(image.first && image.second && waited > 1000 && waited <= FREEINK_UC8279X4_GRAY_SETTLE_MS);
+  const auto glyphs = run(0x01, waited);  // 12.5 % gray: glyph AA
+  assert(!glyphs.first && !glyphs.second && waited == 0);
+}
+
 int main(int argc, char** argv) {
   if (argc > 1 && std::strcmp(argv[1], "metalio") == 0) {
     testMetalio();
@@ -763,6 +797,7 @@ int main(int argc, char** argv) {
   testAbsolutePipeline();
   testDrivingRectOverGray();
   testUc8279DrivingRect();
+  testUc8279X4GraySettle();
   testCapabilities();
   testStream<Uc8179Driver>(true,0);
   testStream<Uc8279X4Driver>(false,120);
