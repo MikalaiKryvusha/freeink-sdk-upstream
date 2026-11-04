@@ -711,6 +711,35 @@ static void testDrivingRectOverGray() {
 #endif
 }
 
+// UC8279 (the X4 Pro UC panel): the sheet's first frame over a gray image writes OLD (0x10) as the complement of the
+// target inside the rect and the target outside, then one partial DU — no full GC flash.
+static void testUc8279DrivingRect() {
+#ifdef EINK_DISPLAY_SINGLE_BUFFER_MODE
+  Uc8279X4Driver driver;
+  FreeInkDisplay display(1, 2, 3, 4, 5, 6);
+  display._driver = &driver;
+  display.begin();
+  const auto first = frame(7), sheet = frame(51);
+  std::memcpy(display.getFrameBuffer(), first.data(), first.size());
+  display.displayBuffer(FreeInkDisplay::FULL_REFRESH);
+  std::memcpy(display.getFrameBuffer(), sheet.data(), sheet.size());
+  display._bus.clear();
+  assert(display.displayBufferDrivingRect(0, 0, 800, 120) == 0);
+  const auto old = std::find_if(display._bus.writes.begin(), display._bus.writes.end(),
+                                [](const auto& w) { return w.command == 0x10; });
+  assert(old != display._bus.writes.end());
+  const size_t wb = driver._wb, offset = static_cast<size_t>(driver._cfg.gateOffset) * wb;
+  assert(old->bytes.size() >= offset + 480 * wb);
+  for (size_t r = 0; r < 480; ++r) {
+    for (size_t i = 0; i < wb; ++i) {
+      const uint8_t want = r < 120 ? uint8_t(~sheet[r * wb + i]) : sheet[r * wb + i];
+      assert(old->bytes[offset + r * wb + i] == want);
+    }
+  }
+  assert(driver._oldPlaneValid && !driver._needFullClear && !driver._pendingRefresh);
+#endif
+}
+
 int main(int argc, char** argv) {
   if (argc > 1 && std::strcmp(argv[1], "metalio") == 0) {
     testMetalio();
@@ -733,6 +762,7 @@ int main(int argc, char** argv) {
   }
   testAbsolutePipeline();
   testDrivingRectOverGray();
+  testUc8279DrivingRect();
   testCapabilities();
   testStream<Uc8179Driver>(true,0);
   testStream<Uc8279X4Driver>(false,120);

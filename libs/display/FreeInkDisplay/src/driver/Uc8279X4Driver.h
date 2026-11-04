@@ -81,6 +81,8 @@ class Uc8279X4Driver : public PanelDriver {
   // and makes per-keystroke updates unusable. Falls back to a full Fast refresh
   // whenever a differential partial would be invalid (no synced OLD plane, a
   // pending full clear, or a non-byte-aligned x/w).
+  bool displayDrivingRect(EpdBus& bus, const uint8_t* fb, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+                          bool turnOff) override;
   void displayWindow(EpdBus& bus, const uint8_t* fb, const uint8_t* prev, uint16_t x, uint16_t y, uint16_t w,
                      uint16_t h, bool turnOff) override;
   bool supportsAsyncDisplay() const override { return true; }
@@ -127,6 +129,9 @@ class Uc8279X4Driver : public PanelDriver {
   // sub-variants), then 0xFF padding to the addressed gate count. `invert`
   // bitwise-inverts the image rows (AA planes only, per the vendor reference).
   void streamPlane(EpdBus& bus, uint8_t ramCmd, const uint8_t* fb, bool invert = false);
+  // streamPlane, but bytes of the framebuffer rect [bx0, bx1) x [y0, y1) (byte columns, rows) go complemented.
+  void streamPlaneRectInverted(EpdBus& bus, uint8_t ramCmd, const uint8_t* fb, uint16_t bx0, uint16_t bx1, uint16_t y0,
+                               uint16_t y1);
   // Stream (lhs XOR rhs) into a RAM plane with the same geometry/mirroring as
   // streamPlane (used to build absolute grayscale plane1 = plane0 ^ maskMsb).
   void streamPlaneXor(EpdBus& bus, uint8_t ramCmd, const uint8_t* lhs, const uint8_t* rhs, bool invert = false);

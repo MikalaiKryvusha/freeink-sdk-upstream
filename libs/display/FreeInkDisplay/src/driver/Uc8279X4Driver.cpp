@@ -1,5 +1,6 @@
 #include "Uc8279X4Driver.h"
 
+#include <algorithm>
 #include <Arduino.h>
 #include <BoardConfig.h>
 #include <esp_heap_caps.h>
@@ -380,6 +381,57 @@ void Uc8279X4Driver::streamPlaneXor(EpdBus& bus, uint8_t ramCmd, const uint8_t* 
   }
   memset(row, 0xFF, wb);
   for (uint16_t y = _cfg.gateOffset + _h; y < _tresH; y++) txn.writeBytes(row, wb);
+}
+
+void Uc8279X4Driver::streamPlaneRectInverted(EpdBus& bus, uint8_t ramCmd, const uint8_t* fb, uint16_t bx0, uint16_t bx1,
+                                             uint16_t y0, uint16_t y1) {
+  uint8_t row[128];
+  const uint16_t wb = _wb <= sizeof(row) ? _wb : sizeof(row);
+  bus.cmd(ramCmd);
+  auto txn = bus.beginTxn();
+  memset(row, 0xFF, wb);
+  for (uint16_t y = 0; y < _cfg.gateOffset; y++) txn.writeBytes(row, wb);
+  static const uint8_t kBitRev[16] = {0x0, 0x8, 0x4, 0xC, 0x2, 0xA, 0x6, 0xE, 0x1, 0x9, 0x5, 0xD, 0x3, 0xB, 0x7, 0xF};
+  for (uint16_t n = 0; n < _h; n++) {
+    const uint16_t y = FREEINK_UC8279X4_ROWREV ? static_cast<uint16_t>(_h - 1 - n) : n;
+    const uint8_t* src = fb + static_cast<uint32_t>(y) * _wb;
+    const bool rowIn = y >= y0 && y < y1;
+    for (uint16_t i = 0; i < wb; i++) {
+      const uint16_t si = FREEINK_UC8279X4_XMIRROR ? static_cast<uint16_t>(wb - 1 - i) : i;
+      uint8_t m = src[si];
+      if (rowIn && si >= bx0 && si < bx1) m = static_cast<uint8_t>(~m);
+      row[i] = FREEINK_UC8279X4_XMIRROR ? static_cast<uint8_t>((kBitRev[m & 0x0F] << 4) | kBitRev[m >> 4]) : m;
+    }
+    txn.writeBytes(row, wb);
+  }
+  memset(row, 0xFF, wb);
+  for (uint16_t y = _cfg.gateOffset + _h; y < _tresH; y++) txn.writeBytes(row, wb);
+}
+
+// A sheet over a gray image still on the glass: DU partial where NEW = target and OLD = target outside the rect but
+// its complement inside — every rect pixel transitions (gray ones included), nothing outside is driven, so the image
+// stays. Replaces the full GC flash the driver would otherwise run after a direct gray pass.
+bool Uc8279X4Driver::displayDrivingRect(EpdBus& bus, const uint8_t* fb, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+                                        bool turnOff) {
+  if (!fb || w == 0 || h == 0 || x >= _w || y >= _h || _pendingRefresh) return false;
+  const uint16_t bx0 = static_cast<uint16_t>(x / 8);
+  const uint16_t bx1 = static_cast<uint16_t>(std::min<uint32_t>(_wb, (static_cast<uint32_t>(x) + w + 7u) / 8u));
+  const uint16_t y1 = static_cast<uint16_t>(std::min<uint32_t>(_h, static_cast<uint32_t>(y) + h));
+  _directGrayOnPanel = false;
+  _redriveAfterGray = false;
+  _grayImagePass = false;
+  _absoluteInput = false;
+  _directGrayPass = false;
+  _grayBaseValid = false;
+  _absoluteGrayPlanes = false;
+  streamPlane(bus, CMD_DTM2, fb);
+  streamPlaneRectInverted(bus, CMD_DTM1, fb, bx0, bx1, y, y1);
+  startBwRefresh(bus, /*fast=*/true);
+  _pendingPartial = true;
+  _pendingTurnOff = turnOff;
+  _pendingRefresh = true;
+  displayFinish(bus, fb);  // waits, leaves partial mode, OLD = target
+  return true;
 }
 
 void Uc8279X4Driver::powerOnIfNeeded(EpdBus& bus, const char* tag) {
