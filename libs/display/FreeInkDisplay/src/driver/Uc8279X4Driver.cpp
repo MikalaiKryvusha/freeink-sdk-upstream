@@ -461,21 +461,20 @@ bool Uc8279X4Driver::displayStart(EpdBus& bus, const uint8_t* fb, const uint8_t*
     memcpy(_grayBase, fb, _bufferSize);
     _grayBaseValid = true;
   }
-  // Only an EXPLICIT Fast request uses the PTIN/PTOUT DU partial. Full AND Half
-  // run the clearing OTP GC waveform, and the GC looks each pixel up by the pair
-  // (OLD, NEW) — so OLD must be what is ON THE GLASS, never a made-up plane
-  // (the X3 sibling's field finding: stock's full path never touches DTM1).
-  //   * A complement OLD (the former Half "scrub") tells unchanged pixels they
-  //     were the opposite colour: the GC runs a full transition on a pixel
-  //     already at its target and pumps DC into static UI (menu header band,
-  //     sheet ghost on the next gray image — X4 Pro field report 2026-11-04).
-  //   * A white OLD reads an old black pixel that turns white as WW and barely
-  //     drives it — its charge stays under the glass.
-  // Truth by state: the last displayed frame (displayFinish syncs DTM1) when it
-  // is known; the target after the exit-from-gray DU below; white only when
-  // nothing is known (first paint, resync).
-  const bool oldIsGlass = _oldPlaneValid && !_needFullClear;
-  const bool fast = (mode == RefreshMode::Fast) && oldIsGlass;
+  // Same differential model as the UC8179 sibling: only an EXPLICIT Fast request
+  // uses the PTIN/PTOUT DU partial (OLD plane = previous displayed frame). Full
+  // AND Half both run the clearing OTP GC waveform — but they seed the OLD plane
+  // DIFFERENTLY (this is the load-bearing distinction, copied from UC8179):
+  //   * Half = charge SCRUB: OLD = complement of the target, so EVERY pixel
+  //     (including white background) is forced through a transition cell and no
+  //     WW/BB pixel idles with stale AA charge. A white-seed GC only redraws
+  //     black-target pixels and leaves background ghost parked in WW — that was
+  //     the residual ghosting seen after fix9's white-seed Half.
+  //   * Full = absolute-from-white seed (the known clean full flash).
+  // Half is CrossPoint's periodic ghost-cleanup (every getRefreshFrequency()
+  // pages) AND the manual force-refresh; it MUST scrub, exactly like UC8179.
+  const bool scrub = (mode == RefreshMode::Half);
+  const bool fast = (mode == RefreshMode::Fast) && !_needFullClear && _oldPlaneValid;
 
   if (paintDestination) {
     streamPlane(bus, CMD_DTM1, fb, true);
@@ -487,21 +486,21 @@ bool Uc8279X4Driver::displayStart(EpdBus& bus, const uint8_t* fb, const uint8_t*
 
   streamPlane(bus, CMD_DTM2, fb);
   if (!fast) {
-    if (paintDestination) {
-      // The DU above left the glass at the target; DTM1 still holds its complement.
-      streamPlane(bus, CMD_DTM1, fb);
-    } else if (!oldIsGlass) {
-      // Nothing known about the glass: the absolute GC-from-white seed.
+    if (scrub) {
+      // Half scrub: OLD = ~target -> every pixel transitions, purging idle charge.
+      streamPlane(bus, CMD_DTM1, fb, /*invert=*/true);
+    } else {
+      // Full flash: seed the OLD plane white across the whole 600-gate scan for
+      // the absolute GC-from-white waveform.
       bus.fillPlane(CMD_DTM1, 0xFF, _tresH, _wb);
     }
-    // else DTM1 already holds the last displayed frame — leave it.
   } else if (_redriveAfterGray) {
     // Re-drive every pixel once after grayscale so the B/W transition scrubs
     // residual edge charge before restoring the ordinary differential baseline.
     streamPlane(bus, CMD_DTM1, fb, /*invert=*/true);
   }
-  // Consumed: the GC (!fast) or the re-drive above already handled any post-AA
-  // gray residue for this frame.
+  // Consumed: the white-seed (!fast) or the re-drive above already scrubbed any
+  // post-AA gray residue for this frame.
   _redriveAfterGray = false;
 
   startBwRefresh(bus, fast);
