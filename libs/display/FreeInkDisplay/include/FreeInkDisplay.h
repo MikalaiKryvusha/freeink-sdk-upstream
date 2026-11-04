@@ -284,7 +284,9 @@ class FreeInkDisplay {
   // Fast paint of the framebuffer that drives every pixel of the panel rect (x, y, w, h in panel coordinates) and
   // none outside it — for a sheet opening over a gray image left on the glass. Falls back to a FAST displayBuffer()
   // where unsupported (or right after a polarity switch, when the baseline is not the visible frame).
-  void displayBufferDrivingRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
+  // Returns 0 when the rect was driven; otherwise why it fell back: 1 no driver, 2 polarity dirty, 3 driver refused,
+  // 4 dual-buffer build.
+  int displayBufferDrivingRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
   void displayGrayBuffer(bool turnOffScreen = false, const unsigned char* lut = nullptr, bool factoryMode = false);
   void displayGrayCalibration(uint16_t customX, uint16_t customY, uint16_t customW, uint16_t customH);
 
