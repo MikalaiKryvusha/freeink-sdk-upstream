@@ -472,7 +472,9 @@ bool Uc8279X4Driver::displayStart(EpdBus& bus, const uint8_t* fb, const uint8_t*
   const bool scrub = (mode == RefreshMode::Half);
   const bool fast = (mode == RefreshMode::Fast) && !_needFullClear && _oldPlaneValid;
 
-  if (paintDestination) {
+  // A Half scrub drives every pixel to its target from the complement anyway — the separate exit-from-gray paint
+  // before it was a second black/white transition for nothing (Nikolai, 04.11.2026). Kept for the other modes.
+  if (paintDestination && mode != RefreshMode::Half) {
     streamPlane(bus, CMD_DTM1, fb, true);
     streamPlane(bus, CMD_DTM2, fb);
     startBwRefresh(bus, true);
