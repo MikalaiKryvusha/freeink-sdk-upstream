@@ -83,6 +83,9 @@ class Uc8279X4Driver : public PanelDriver {
   // pending full clear, or a non-byte-aligned x/w).
   bool displayDrivingRect(EpdBus& bus, const uint8_t* fb, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
                           bool turnOff) override;
+  // A gray image is still on the glass outside a rect painted by displayDrivingRect: the next clean (non-Fast)
+  // refresh runs the exit-from-gray paint first, as straight after a gray pass.
+  bool _grayLeftOnPanel = false;
   void displayWindow(EpdBus& bus, const uint8_t* fb, const uint8_t* prev, uint16_t x, uint16_t y, uint16_t w,
                      uint16_t h, bool turnOff) override;
   bool supportsAsyncDisplay() const override { return true; }

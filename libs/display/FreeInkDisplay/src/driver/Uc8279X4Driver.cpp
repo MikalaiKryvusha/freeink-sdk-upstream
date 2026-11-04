@@ -417,6 +417,7 @@ bool Uc8279X4Driver::displayDrivingRect(EpdBus& bus, const uint8_t* fb, uint16_t
   const uint16_t bx0 = static_cast<uint16_t>(x / 8);
   const uint16_t bx1 = static_cast<uint16_t>(std::min<uint32_t>(_wb, (static_cast<uint32_t>(x) + w + 7u) / 8u));
   const uint16_t y1 = static_cast<uint16_t>(std::min<uint32_t>(_h, static_cast<uint32_t>(y) + h));
+  _grayLeftOnPanel = _grayLeftOnPanel || _directGrayOnPanel;  // the photo outside the rect stays gray
   _directGrayOnPanel = false;
   _redriveAfterGray = false;
   _grayImagePass = false;
@@ -442,8 +443,11 @@ void Uc8279X4Driver::powerOnIfNeeded(EpdBus& bus, const char* tag) {
 }
 
 bool Uc8279X4Driver::displayStart(EpdBus& bus, const uint8_t* fb, const uint8_t* prev, RefreshMode mode, bool turnOff) {
-  const bool paintDestination = _directGrayOnPanel;
+  // Exit-from-gray paint: straight after a direct gray pass, or before the next clean after a sheet painted over a
+  // gray image (the rest of the glass is still gray; this pair with the Half scrub is what clears the residue).
+  const bool paintDestination = _directGrayOnPanel || (_grayLeftOnPanel && mode != RefreshMode::Fast);
   _directGrayOnPanel = false;
+  if (mode != RefreshMode::Fast) _grayLeftOnPanel = false;
   _grayImagePass = false;
   _absoluteInput = false;
   _directGrayPass = false;
