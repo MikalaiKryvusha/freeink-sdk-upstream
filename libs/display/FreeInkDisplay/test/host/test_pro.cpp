@@ -740,6 +740,71 @@ static void testUc8279DrivingRect() {
 #endif
 }
 
+// UC8279 X4 Pro clean (Full/Half GC): OLD (0x10) is what is on the glass. Known frame -> DTM1 untouched before the
+// DRF; after a gray image -> the exit DU, then OLD = target; nothing known -> white seed. Never the complement.
+static void testUc8279X4CleanOldIsGlass() {
+  const auto a = frame(11), b = frame(22);
+  const auto streamed = [](Uc8279X4Driver& d, const Bytes& fb, bool invert) {
+    EpdBus scratch;
+    d.streamPlane(scratch, 0x10, fb.data(), invert);
+    return scratch.writes.front().bytes;
+  };
+  const auto oldBeforeLastDrf = [](const EpdBus& bus) {
+    size_t drf = bus.writes.size();
+    for (size_t i = bus.writes.size(); i-- > 0;)
+      if (bus.writes[i].command == 0x12) { drf = i; break; }
+    assert(drf < bus.writes.size());
+    std::vector<const Bytes*> olds;
+    for (size_t i = 0; i < drf; ++i)
+      if (bus.writes[i].command == 0x10) olds.push_back(&bus.writes[i].bytes);
+    return olds;
+  };
+  for (auto mode : {RefreshMode::Full, RefreshMode::Half}) {
+    // Known glass: the GC diffs b against a, the frame displayFinish left in DTM1.
+    {
+      Uc8279X4Driver driver;
+      EpdBus bus;
+      driver.begin(bus);
+      driver.display(bus, a.data(), nullptr, RefreshMode::Full, false);
+      bus.clear();
+      driver.display(bus, b.data(), nullptr, mode, false);
+      assert(oldBeforeLastDrf(bus).empty());
+      assert(lastRegister(bus, 0xe5) == 0x1e);
+      assert(lastPlane(bus, 0x10) == streamed(driver, b, false));
+    }
+    // Gray on the glass: DU to the target with OLD = ~target, then the GC with OLD = target.
+    {
+      Uc8279X4Driver driver;
+      EpdBus bus;
+      driver.begin(bus);
+      driver.display(bus, a.data(), nullptr, RefreshMode::Full, false);
+      Bytes lsb(48000, 0), msb(48000, 0x55);
+      driver.beginGrayscale(bus, a.data(), GrayscaleMode::Direct, RefreshMode::Half, false);
+      driver.copyGrayscaleLsb(bus, lsb.data());
+      driver.copyGrayscaleMsb(bus, msb.data());
+      driver.displayGray(bus, a.data(), false, nullptr, false);
+      bus.clear();
+      driver.display(bus, b.data(), nullptr, mode, false);
+      const auto olds = oldBeforeLastDrf(bus);
+      assert(olds.size() == 2);
+      assert(*olds[0] == streamed(driver, b, true));
+      assert(*olds[1] == streamed(driver, b, false));
+    }
+    // Nothing known (resync): white seed.
+    {
+      Uc8279X4Driver driver;
+      EpdBus bus;
+      driver.begin(bus);
+      driver.display(bus, a.data(), nullptr, RefreshMode::Full, false);
+      driver.requestResync(0);
+      bus.clear();
+      driver.display(bus, b.data(), nullptr, mode, false);
+      const auto olds = oldBeforeLastDrf(bus);
+      assert(olds.size() == 1 && *olds[0] == Bytes(olds[0]->size(), 0xFF));
+    }
+  }
+}
+
 int main(int argc, char** argv) {
   if (argc > 1 && std::strcmp(argv[1], "metalio") == 0) {
     testMetalio();
@@ -763,6 +828,7 @@ int main(int argc, char** argv) {
   testAbsolutePipeline();
   testDrivingRectOverGray();
   testUc8279DrivingRect();
+  testUc8279X4CleanOldIsGlass();
   testCapabilities();
   testStream<Uc8179Driver>(true,0);
   testStream<Uc8279X4Driver>(false,120);
