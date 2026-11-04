@@ -321,9 +321,18 @@ static void testAbsolutePipeline() {
       assert(plane0[i] == uint8_t(~lsb[i]) && plane1[i] == uint8_t(~msb[i]));
     }
     for (const auto& w : display._bus.writes) assert(w.command != 0x20);
+    // The gray paint never runs on the booster ramp: a powered-down panel gets its own power-on activation (0xC0,
+    // waited on BUSY) before the 0xCC paint; an already powered panel goes straight to the paint.
+    const bool wasOn = driver._isScreenOn;
+    const size_t before = display._bus.writes.size();
     display.displayGrayBuffer(false);
+    std::vector<uint8_t> paintActivations;
+    for (size_t i = before; i < display._bus.writes.size(); ++i) {
+      if (display._bus.writes[i].command == 0x22) paintActivations.push_back(display._bus.writes[i].bytes.at(0));
+    }
     assert(std::count_if(display._bus.writes.begin(), display._bus.writes.end(),
-                         [](const auto& w) { return w.command == 0x20; }) == 1);
+                         [](const auto& w) { return w.command == 0x20; }) == (wasOn ? 1 : 2));
+    assert(paintActivations == (wasOn ? std::vector<uint8_t>{0xCC} : std::vector<uint8_t>{0xC0, 0xCC}));
     assert(lastRegister(display._bus, 0x22) == 0xCC);
     assert(driver._isScreenOn && driver._needsGrayClear);
     display.cleanupGrayscaleBuffers(bw.data());
@@ -338,12 +347,14 @@ static void testAbsolutePipeline() {
   assert(display.displayGrayscaleBase(absolute));
   display.copyGrayscaleBuffers(lsb.data(), msb.data());
   display._bus.clear();
+  const bool onBeforeShutdownPaint = driver._isScreenOn;
   display.displayGrayBuffer(true);
   std::vector<uint8_t> activations;
   for (const auto& w : display._bus.writes) {
     if (w.command == 0x22) activations.push_back(w.bytes.at(0));
   }
-  assert((activations == std::vector<uint8_t>{0xCC, 0x03}));
+  assert((activations == (onBeforeShutdownPaint ? std::vector<uint8_t>{0xCC, 0x03}
+                                                : std::vector<uint8_t>{0xC0, 0xCC, 0x03})));
   assert(!driver._isScreenOn && driver._needsGrayClear);
   for (unsigned failure = 0; failure < 6; ++failure) {
     assert(display.displayGrayscaleBase(absolute));
