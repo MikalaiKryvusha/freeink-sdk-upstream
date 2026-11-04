@@ -535,6 +535,8 @@ bool SDCardManager::openFileForWrite(const char* moduleName, const String& path,
 
 uint64_t SDCardManager::sdTotalBytes() const { return cachedTotalBytes; }
 
+uint8_t SDCardManager::sdFatType() { return initialized ? vol().fatType() : 0; }
+
 uint64_t SDCardManager::sdUsedBytes() {
   if (!initialized) return 0;
   const uint32_t now = millis();
