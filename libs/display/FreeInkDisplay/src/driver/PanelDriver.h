@@ -62,6 +62,14 @@ class PanelDriver {
                              uint16_t h, bool turnOff) {
     display(bus, fb, prev, RefreshMode::Fast, turnOff);
   }
+  // Fast (differential) paint that drives EVERY pixel inside the rect and none outside it, even over a gray image
+  // still on the glass (where the previous-frame plane holds only its B/W draft). Returns false when unsupported;
+  // the caller then paints the usual way.
+  virtual bool displayDrivingRect(EpdBus& bus, const uint8_t* fb, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+                                  bool turnOff) {
+    (void)bus; (void)fb; (void)x; (void)y; (void)w; (void)h; (void)turnOff;
+    return false;
+  }
 
   // True when displayStart() defers (returns true) rather than completing
   // inline. Lets the facade skip async scaffolding (shadow setup) on blocking

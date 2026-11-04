@@ -15,6 +15,7 @@
 #endif
 
 #include <cstring>
+#include <algorithm>
 #include <vector>
 
 #include "../lut/Ssd1677Luts.h"
@@ -814,6 +815,52 @@ void Ssd1677Driver::displayWindow(EpdBus& bus, const uint8_t* fb, const uint8_t*
     _pendingPowerOff = false;
     powerOffController(bus);
   }
+}
+
+bool Ssd1677Driver::displayDrivingRect(EpdBus& bus, const uint8_t* fb, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+                                       bool turnOff) {
+  if (!fb || w == 0 || h == 0 || _needsInitialFull || _customLutActive || _cfg.blackPulseClean) return false;
+  if (x >= _w || y >= _h) return false;
+  // Byte-aligned columns; clip to the panel.
+  const uint16_t x0 = x & ~7u;
+  const uint16_t x1 = static_cast<uint16_t>(std::min<uint32_t>(_w, (static_cast<uint32_t>(x) + w + 7u) & ~7u));
+  const uint16_t y1 = static_cast<uint16_t>(std::min<uint32_t>(_h, static_cast<uint32_t>(y) + h));
+  const uint16_t wb = static_cast<uint16_t>((x1 - x0) / 8);
+  const uint16_t rows = static_cast<uint16_t>(y1 - y);
+
+  // BW: the whole target frame.
+  setRamArea(bus, 0, 0, _w, _h);
+  writeRam(bus, CMD_WRITE_RAM_BW, fb, _bufferSize);
+  // RED inside the rect: the complement of the target, so every pixel there differs and the DU waveform drives it
+  // (a gray pixel left by an image included). Outside, RED keeps the previous frame, equal to the target there, so
+  // nothing outside is driven and whatever is on the glass (a gray image) stays.
+  setRamArea(bus, x0, y, x1 - x0, rows);
+  bus.cmd(CMD_WRITE_RAM_RED);
+  {
+    uint8_t chunk[128];
+    auto txn = bus.beginTxn();
+    for (uint16_t r = 0; r < rows; ++r) {
+      const uint8_t* src = fb + static_cast<uint32_t>(y + r) * _wb + x0 / 8;
+      for (uint16_t off = 0; off < wb; off += sizeof(chunk)) {
+        const uint16_t n = static_cast<uint16_t>(std::min<uint32_t>(sizeof(chunk), wb - off));
+        for (uint16_t i = 0; i < n; ++i) chunk[i] = static_cast<uint8_t>(~src[off + i]);
+        txn.writeBytes(chunk, n);
+      }
+    }
+  }
+  // This is the B/W exit from the gray image for the rect: no HALF clean of the whole frame.
+  _needsGrayClear = false;
+  _inGrayscaleMode = false;
+  refresh(bus, RefreshMode::Fast, turnOff);
+  // Baseline: both planes hold the target (the rest of the glass keeps its gray, as after any windowed paint).
+  setRamArea(bus, 0, 0, _w, _h);
+  writeRam(bus, CMD_WRITE_RAM_BW, fb, _bufferSize);
+  writeRam(bus, CMD_WRITE_RAM_RED, fb, _bufferSize);
+  if (_pendingPowerOff) {
+    _pendingPowerOff = false;
+    powerOffController(bus);
+  }
+  return true;
 }
 
 void Ssd1677Driver::seedPreviousFrame(EpdBus& bus, const uint8_t* buf) {

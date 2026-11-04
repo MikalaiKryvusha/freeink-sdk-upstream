@@ -676,6 +676,41 @@ static void testMetalio() {
   assert(lastRegister(bus, 0x10) == 0x03);
 }
 
+// A sheet opening over a gray image left on the glass: the first frame drives every pixel of its rect (RED there is
+// the complement of the target) with one FAST activation, and no HALF clean of the whole frame. Dual-buffer builds
+// fall back to the usual promoted clean.
+static void testDrivingRectOverGray() {
+  Ssd1677Driver driver;
+  FreeInkDisplay display(1, 2, 3, 4, 5, 6);
+  display._driver = &driver;
+  display.begin();
+  const auto bw = frame(33), lsb = frame(14), msb = frame(29), sheet = frame(51);
+  std::memcpy(display.getFrameBuffer(), bw.data(), bw.size());
+  display.displayBuffer(FreeInkDisplay::HALF_REFRESH);  // consume the cold-start full
+  assert(display.displayGrayscaleBase(GrayscaleMode::Absolute));
+  display.copyGrayscaleBuffers(lsb.data(), msb.data());
+  display.displayGrayBuffer(false);
+  display.cleanupGrayscaleBuffers(bw.data());
+  assert(driver._needsGrayClear);
+  std::memcpy(display.getFrameBuffer(), sheet.data(), sheet.size());
+  display._bus.clear();
+  display.displayBufferDrivingRect(0, 0, 800, 120);
+  std::vector<uint8_t> activations;
+  for (const auto& w : display._bus.writes) {
+    if (w.command == 0x22) activations.push_back(w.bytes.at(0));
+  }
+#ifdef EINK_DISPLAY_SINGLE_BUFFER_MODE
+  assert(activations.size() == 1 && activations[0] == driver._cfg.fastSeqOverride);
+  assert(!driver._needsGrayClear);
+  const auto red = std::find_if(display._bus.writes.begin(), display._bus.writes.end(),
+                                [](const auto& w) { return w.command == 0x26; });
+  assert(red != display._bus.writes.end() && red->bytes.size() == 100u * 120u);
+  for (size_t i = 0; i < red->bytes.size(); ++i) assert(red->bytes[i] == uint8_t(~sheet[i]));
+#else
+  assert(!activations.empty() && activations.back() == driver._cfg.halfSeqOverride);
+#endif
+}
+
 int main(int argc, char** argv) {
   if (argc > 1 && std::strcmp(argv[1], "metalio") == 0) {
     testMetalio();
@@ -697,6 +732,7 @@ int main(int argc, char** argv) {
     testUltraChipAbsolute<Uc8279X4Driver>(false, 120, true);
   }
   testAbsolutePipeline();
+  testDrivingRectOverGray();
   testCapabilities();
   testStream<Uc8179Driver>(true,0);
   testStream<Uc8279X4Driver>(false,120);

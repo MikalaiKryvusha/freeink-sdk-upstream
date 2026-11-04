@@ -398,6 +398,28 @@ void FreeInkDisplay::setInverted(const bool inverted) {
   if (_driver) _driver->setBackgroundHint(inverted);
 }
 
+void FreeInkDisplay::displayBufferDrivingRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+#ifdef EINK_DISPLAY_SINGLE_BUFFER_MODE
+  if (_driver && !_inversionDirty) {
+    cancelGrayscalePass();
+    _grayPassFailed = false;
+    DisplayPmLock pmLock;
+    syncPendingAsync();
+    if (_inverted) invertBytes(frameBuffer, bufferSize);
+    const bool done = _driver->displayDrivingRect(_bus, frameBuffer, x, y, w, h, false);
+    if (_inverted) invertBytes(frameBuffer, bufferSize);
+    if (done) {
+      _shadowValid = false;
+      if (_panelSel != PanelSel::X3) _redRamSynced = true;
+      return;
+    }
+  }
+#else
+  (void)x; (void)y; (void)w; (void)h;
+#endif
+  displayBuffer(FAST_REFRESH);
+}
+
 void FreeInkDisplay::setInvertedKeepingPanel(const bool inverted) {
   if (_inverted == inverted) return;
   cancelGrayscalePass();
