@@ -111,6 +111,11 @@ class FreeInkDisplay {
   // refresh after a mode change is automatically promoted from FAST to HALF
   // so single-buffer differential panels cannot compare opposite polarities.
   void setInverted(bool inverted);
+  // Switch the output polarity without forcing the next refresh to a clean one. Only for a caller that has already
+  // re-expressed the framebuffer for the new polarity (inverted its bytes) while the controller's previous-frame RAM
+  // holds the frame on the panel, so a differential update stays exact (e.g. a gray image left on the glass in night
+  // mode: the next FAST paints only what changes over it).
+  void setInvertedKeepingPanel(bool inverted);
   bool toggleInverted();
   bool isInverted() const { return _inverted; }
 #ifndef EINK_DISPLAY_SINGLE_BUFFER_MODE

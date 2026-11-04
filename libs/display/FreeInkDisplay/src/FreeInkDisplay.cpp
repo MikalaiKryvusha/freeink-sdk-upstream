@@ -398,6 +398,15 @@ void FreeInkDisplay::setInverted(const bool inverted) {
   if (_driver) _driver->setBackgroundHint(inverted);
 }
 
+void FreeInkDisplay::setInvertedKeepingPanel(const bool inverted) {
+  if (_inverted == inverted) return;
+  cancelGrayscalePass();
+  syncPendingAsync();
+  _inverted = inverted;
+  _shadowValid = false;
+  if (_driver) _driver->setBackgroundHint(inverted);
+}
+
 bool FreeInkDisplay::toggleInverted() {
   setInverted(!_inverted);
   return _inverted;
