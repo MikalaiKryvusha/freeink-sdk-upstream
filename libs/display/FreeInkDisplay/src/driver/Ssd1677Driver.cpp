@@ -889,6 +889,11 @@ void Ssd1677Driver::displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff, co
   setCustomLut(bus, true, selectedLut);
 
   if (factoryMode) {
+    // Settle the rails in their own activation first. A clean (FULL 0xF7) before an image powers the panel down, and
+    // 0xCC alone powers up inside the paint: the gray LUT's short phases then run while the booster ramps, and the
+    // grays come out uneven — on the X4 Pro a faint band that shows on some paints and not others (rail ramp time
+    // varies with temperature and battery). No-op when the panel is already on.
+    powerOn(bus);
     // Keep shutdown separate from the absolute grayscale activation: combining
     // ANALOG_OFF/CLOCK_OFF with the paint can leave incomplete or smeared grays.
     // Reset CTRL1 to normal — a prior HALF leaves BYPASS_RED set, which would
