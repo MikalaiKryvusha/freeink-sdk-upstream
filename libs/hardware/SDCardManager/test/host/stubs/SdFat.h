@@ -3,6 +3,7 @@
 #include <cstring>
 #include <limits>
 #include <vector>
+
 #include "WString.h"
 
 using oflag_t = int;
@@ -18,6 +19,9 @@ inline size_t maxRead = std::numeric_limits<size_t>::max();
 inline size_t largestRequest = 0;
 inline unsigned reads = 0, closes = 0;
 inline uint32_t readMs = 0;
+inline int32_t freeClusters = 1;
+inline uint32_t clusters = 1;
+inline unsigned clusterScans = 0;
 }  // namespace fakeSd
 
 class FsFile {
@@ -63,9 +67,13 @@ class FsVolume {
   bool remove(const char*) { return true; }
   bool rmdir(const char*) { return true; }
   bool rename(const char*, const char*) { return true; }
-  uint32_t clusterCount() const { return 1; }
+  uint32_t clusterCount() const { return fakeSd::clusters; }
+  uint8_t fatType() const { return 32; }
   uint32_t bytesPerCluster() const { return 512; }
-  int32_t freeClusterCount() const { return 1; }
+  int32_t freeClusterCount() const {
+    ++fakeSd::clusterScans;
+    return fakeSd::freeClusters;
+  }
 };
 
 class SdFat : public FsVolume {
