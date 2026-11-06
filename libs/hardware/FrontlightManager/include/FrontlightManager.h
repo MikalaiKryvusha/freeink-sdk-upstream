@@ -18,6 +18,8 @@
 
 class FrontlightManager {
  public:
+  // The duty a 0-100 percentage maps to at `full` (= 2^bits - 1), the same curve setBrightness() uses.
+  static uint32_t percentDuty(uint8_t percent, uint32_t full);
   // Bring up the PWM channel(s). No-op if the board has no frontlight.
   void begin();
 

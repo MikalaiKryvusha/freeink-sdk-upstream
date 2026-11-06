@@ -53,12 +53,19 @@ static constexpr uint16_t GAMMA_TABLE[101] = {
 uint32_t perceptualDuty(uint32_t pct, uint32_t full) {
   if (pct == 0) return 0;
   if (pct > 100) pct = 100;
-  uint32_t duty = 0;
-  for (uint32_t p = 1; p <= pct; ++p) {
-    const auto ideal = static_cast<uint32_t>(std::lround(std::pow(static_cast<double>(full), (p - 1) / 99.0)));
-    duty = ideal > duty ? ideal : duty + 1u;
+  // Built once per resolution: apply() runs on every slider step and fade tick.
+  static uint32_t tableFull = 0;
+  static uint16_t table[101] = {};
+  if (tableFull != full) {
+    uint32_t duty = 0;
+    for (uint32_t p = 1; p <= 100; ++p) {
+      const auto ideal = static_cast<uint32_t>(std::lround(std::pow(static_cast<double>(full), (p - 1) / 99.0)));
+      duty = ideal > duty ? ideal : duty + 1u;
+      table[p] = static_cast<uint16_t>(duty < full ? duty : full);
+    }
+    tableFull = full;
   }
-  return duty < full ? duty : full;
+  return table[pct];
 }
 #else
 constexpr uint32_t perceptualDuty(uint32_t pct, uint32_t full) {
@@ -149,7 +156,13 @@ void detachChannel(int8_t /*gpio*/, uint8_t ch) {
   ledc_stop(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(ch), 0);
 }
 #elif defined(ARDUINO) && ESP_ARDUINO_VERSION_MAJOR >= 3
-bool attachChannel(int8_t gpio, uint8_t /*ch*/, uint32_t freq, uint8_t bits) { return ledcAttach(gpio, freq, bits); }
+bool attachChannel(int8_t gpio, uint8_t /*ch*/, uint32_t freq, uint8_t bits) {
+  // Arduino clocks LEDC from the 40 MHz crystal where it can. A period of more counts than that
+  // (11 bit at 25 kHz = 51.2 MHz) needs the 80 MHz bus clock, which a PSRAM board keeps at 80 MHz
+  // even in power saving.
+  if ((static_cast<uint64_t>(freq) << bits) > 40000000ULL) ledcSetClockSource(LEDC_USE_APB_CLK);
+  return ledcAttach(gpio, freq, bits);
+}
 void writeChannel(int8_t gpio, uint8_t /*ch*/, uint32_t duty) { ledcWrite(gpio, duty); }
 void detachChannel(int8_t gpio, uint8_t /*ch*/) { ledcDetach(gpio); }
 #else
@@ -630,6 +643,16 @@ void FrontlightManager::releaseOnWake() {
 }
 #endif
 #endif
+
+uint32_t FrontlightManager::percentDuty(uint8_t percent, uint32_t full) {
+#if FREEINK_CAP_FRONTLIGHT
+  return perceptualDuty(percent, full);
+#else
+  (void)percent;
+  (void)full;
+  return 0;
+#endif
+}
 
 void FrontlightManager::setBrightness(uint8_t percent) {
 #if FREEINK_CAP_FRONTLIGHT
