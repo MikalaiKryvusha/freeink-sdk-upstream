@@ -5,6 +5,7 @@
 
 #include <M5Pm1.h>
 #include <Wire.h>
+#include <cmath>
 #include <driver/gpio.h>  // gpio_hold_en/dis in prepareForDeepSleep()/begin()
 #ifdef FREEINK_FRONTLIGHT_LS
 #include <driver/ledc.h>
@@ -44,12 +45,29 @@ static constexpr uint16_t GAMMA_TABLE[101] = {
     40705, 41608, 42518, 43436, 44361, 45295, 46236, 47185, 48141, 49105, 50076, 51055, 52042, 53036, 54037,
     55046, 56062, 57086, 58117, 59155, 60200, 61253, 62313, 63380, 64454, 65535};
 
+#if FREEINK_FRONTLIGHT_LOG_CURVE
+// Logarithmic scale: 1% = 1 LSB (the shortest PWM pulse), 100% = full duty, which the
+// Arduino LEDC driver turns into a constant-on output (no PWM). Each percent is the same
+// brightness ratio (duty = full^((pct-1)/99)); where that ratio is less than one LSB
+// (the dim end), a step is one LSB instead, so every percent stays a distinct duty.
+uint32_t perceptualDuty(uint32_t pct, uint32_t full) {
+  if (pct == 0) return 0;
+  if (pct > 100) pct = 100;
+  uint32_t duty = 0;
+  for (uint32_t p = 1; p <= pct; ++p) {
+    const auto ideal = static_cast<uint32_t>(std::lround(std::pow(static_cast<double>(full), (p - 1) / 99.0)));
+    duty = ideal > duty ? ideal : duty + 1u;
+  }
+  return duty < full ? duty : full;
+}
+#else
 constexpr uint32_t perceptualDuty(uint32_t pct, uint32_t full) {
   if (pct == 0) return 0;
   if (pct > 100) pct = 100;
   const uint32_t duty = (full * GAMMA_TABLE[pct] + 32767u) / 65535u;
   return duty ? duty : 1u;
 }
+#endif
 
 // Paper Mono: the PWM lives in the M5PM1 PMIC, not the ESP. PM1 GPIO3 routed to
 // alt-function PWM0 drives the AW9967 frontlight driver. Duty register is

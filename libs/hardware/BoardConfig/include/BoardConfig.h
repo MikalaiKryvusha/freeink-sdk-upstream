@@ -1852,6 +1852,12 @@ constexpr BoardProfile PICCO = {
 static_assert(PICCO.displayWidth / 8 * PICCO.displayHeight == 48000,
               "Picco framebuffer must be 48,000 bytes (800/8 x 480)");
 
+// X4 Pro frontlight PWM resolution. Stock is 10 bit at 25 kHz; the 80 MHz LEDC clock allows 11 bit
+// (2048 steps) at the same frequency. A build may override it to test the finer dim end.
+#ifndef FREEINK_X4PRO_FRONTLIGHT_BITS
+#define FREEINK_X4PRO_FRONTLIGHT_BITS 10
+#endif
+
 // --- Xteink X4 Pro — ESP32-S3, 800x480 EPD + GT911 touch + warm/cold frontlight ---
 // Recovered from the OEM flash dump (x4pro_flash_dump.bin); full evidence and confidence
 // levels in docs/xteink-x4pro-support.md. This is a DISTINCT device from the C3
@@ -1943,7 +1949,7 @@ constexpr BoardProfile XTEINK_X4_PRO = {
     // duty).
     // GPIO8 is the hardware-confirmed cool channel and GPIO9 the warm channel;
     // FrontlightManager mixes them for color-temperature control.
-    {8, 25000, 10, true, 9},
+    {8, 25000, FREEINK_X4PRO_FRONTLIGHT_BITS, true, 9},
     NO_AUDIO,
     NO_LEDS,
     NO_FLIP,  // panel mount transform pending hardware; native SSD1677 scan is 800x480 landscape
