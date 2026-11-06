@@ -33,6 +33,10 @@ class FrontlightManager {
   // smallest non-zero hardware duty, making dim night reading possible.
   void setBrightnessLevel(uint8_t level);
 
+  // Raw total duty (0..2^bits-1) split between the channels as usual, no curve. For a caller that
+  // dithers between neighbouring duties during a fade. brightness()/brightnessLevel() keep their values.
+  void setTotalDuty(uint32_t duty);
+
   // Convenience: fully off / restore last brightness.
   void off();
   void on();
@@ -169,6 +173,8 @@ class FrontlightManager {
   uint8_t _brightness = 0;
   uint8_t _brightnessLevel = 0;
   bool _useLevel = false;
+  bool _useRawDuty = false;
+  uint32_t _rawDuty = 0;
   // Duty written by the previous apply(); 0 = the light was off. The off->on
   // edge is what arms the boost kick-start (see apply()).
   uint32_t _lastTotalDuty = 0;

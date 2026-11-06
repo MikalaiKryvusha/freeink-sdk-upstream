@@ -520,7 +520,9 @@ void FrontlightManager::apply() {
   // levels: brightness=1, warmth=50 previously became cool=0% + warm=0%.
   // Splitting the total duty also keeps cool+warm equal to the requested total.
   uint32_t totalDuty = 0;
-  if (_useLevel && _brightnessLevel > 0) {
+  if (_useRawDuty) {
+    totalDuty = _rawDuty < full ? _rawDuty : full;
+  } else if (_useLevel && _brightnessLevel > 0) {
     const uint32_t n = static_cast<uint32_t>(_brightnessLevel - 1u);
     totalDuty = 1u + (n * n * (full - 1u)) / (254u * 254u);
   } else if (!_useLevel) {
@@ -660,6 +662,7 @@ void FrontlightManager::setBrightness(uint8_t percent) {
   _brightness = percent;
   _brightnessLevel = (static_cast<uint16_t>(percent) * 255u) / 100u;
   _useLevel = false;
+  _useRawDuty = false;
   if (percent > 0) _lastBrightness = percent;
   apply();
 #else
@@ -667,9 +670,20 @@ void FrontlightManager::setBrightness(uint8_t percent) {
 #endif
 }
 
+void FrontlightManager::setTotalDuty(uint32_t duty) {
+#if FREEINK_CAP_FRONTLIGHT
+  _rawDuty = duty;
+  _useRawDuty = true;
+  apply();
+#else
+  (void)duty;
+#endif
+}
+
 void FrontlightManager::setBrightnessLevel(uint8_t level) {
 #if FREEINK_CAP_FRONTLIGHT
   _brightnessLevel = level;
+  _useRawDuty = false;
   _brightness = (static_cast<uint16_t>(level) * 100u) / 255u;
   _useLevel = true;
   apply();
