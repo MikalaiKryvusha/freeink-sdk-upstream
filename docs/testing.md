@@ -107,6 +107,9 @@ device.
 sh libs/hardware/FrontlightManager/test/host/run.sh
 ```
 
+Also checks the fractional PWM channel quantizer: brightness/warmth combinations,
+fractional fade energy, equal neutral-channel samples, and off/full endpoints.
+
 Compiles the Picco frontlight backend and real board profile against a register
 model with a wake-settling interval. Covers the first nonzero brightness write,
 off/on level restoration, warm/cool channels, slider updates without repeated

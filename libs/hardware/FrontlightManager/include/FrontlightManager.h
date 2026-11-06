@@ -16,6 +16,10 @@
 #include <Arduino.h>
 #include <BoardConfig.h>
 
+#if FREEINK_FRONTLIGHT_DITHER && FREEINK_DEVICE_X4PRO
+#include "FrontlightPwmDither.h"
+#endif
+
 class FrontlightManager {
  public:
   // The duty a 0-100 percentage maps to at `full` (= 2^bits - 1), the same curve setBrightness() uses.
@@ -33,9 +37,16 @@ class FrontlightManager {
   // smallest non-zero hardware duty, making dim night reading possible.
   void setBrightnessLevel(uint8_t level);
 
-  // Raw total duty (0..2^bits-1) split between the channels as usual, no curve. For a caller that
-  // dithers between neighbouring duties during a fade. brightness()/brightnessLevel() keep their values.
-  void setTotalDuty(uint32_t duty);
+  // Raw total duty, without a curve. Debug X4 Pro retains its fraction and quantizes each channel separately.
+  // brightness()/brightnessLevel() keep their values. Repeat while needsPwmDither() is true.
+  void setTotalDuty(float duty);
+  bool needsPwmDither() const {
+#if FREEINK_FRONTLIGHT_DITHER && FREEINK_DEVICE_X4PRO
+    return _pwmDither.pending();
+#else
+    return false;
+#endif
+  }
 
   // Convenience: fully off / restore last brightness.
   void off();
@@ -174,7 +185,10 @@ class FrontlightManager {
   uint8_t _brightnessLevel = 0;
   bool _useLevel = false;
   bool _useRawDuty = false;
-  uint32_t _rawDuty = 0;
+  float _rawDuty = 0.0f;
+#if FREEINK_FRONTLIGHT_DITHER && FREEINK_DEVICE_X4PRO
+  FrontlightPwmDither _pwmDither;
+#endif
   // Duty written by the previous apply(); 0 = the light was off. The off->on
   // edge is what arms the boost kick-start (see apply()).
   uint32_t _lastTotalDuty = 0;

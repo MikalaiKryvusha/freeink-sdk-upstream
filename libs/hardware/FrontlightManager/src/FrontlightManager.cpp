@@ -1,12 +1,13 @@
 #include "FrontlightManager.h"
 
 #if FREEINK_CAP_FRONTLIGHT
-#include "FrontlightManager.h"
-
 #include <M5Pm1.h>
 #include <Wire.h>
-#include <cmath>
 #include <driver/gpio.h>  // gpio_hold_en/dis in prepareForDeepSleep()/begin()
+
+#include <cmath>
+
+#include "FrontlightManager.h"
 #ifdef FREEINK_FRONTLIGHT_LS
 #include <driver/ledc.h>
 // esp_sleep_sub_mode_config lives in a private IDF header (no public API exists
@@ -36,6 +37,7 @@ constexpr uint32_t maxDuty(uint8_t bits) { return (1u << bits) - 1u; }
 // picked so on a 10-bit duty range 1% rounds up to exactly 1 LSB (the dimmest
 // possible light) and every 1% step maps to a distinct duty — gamma 2 was too
 // steep and collapsed 1-4% into the same single-LSB duty.
+#if !FREEINK_FRONTLIGHT_LOG_CURVE
 static constexpr uint16_t GAMMA_TABLE[101] = {
     0,     32,    101,   197,   318,   460,   622,   803,   1001,  1217,  1449,  1697,  1960,  2237,  2529,
     2835,  3155,  3488,  3834,  4193,  4565,  4949,  5345,  5753,  6173,  6604,  7047,  7502,  7967,  8444,
@@ -44,6 +46,7 @@ static constexpr uint16_t GAMMA_TABLE[101] = {
     28134, 28914, 29703, 30500, 31306, 32120, 32942, 33772, 34611, 35457, 36312, 37175, 38045, 38924, 39811,
     40705, 41608, 42518, 43436, 44361, 45295, 46236, 47185, 48141, 49105, 50076, 51055, 52042, 53036, 54037,
     55046, 56062, 57086, 58117, 59155, 60200, 61253, 62313, 63380, 64454, 65535};
+#endif
 
 #if FREEINK_FRONTLIGHT_LOG_CURVE
 // Logarithmic scale: 1% = 1 LSB (the shortest PWM pulse), 100% = full duty, which the
@@ -411,16 +414,26 @@ void FrontlightManager::applyLm3630a() {
 // register protocol high; exact UI index mapping medium — validate/tune on hardware.
 namespace {
 constexpr uint8_t PICCO_FL_LUT[400] = {
-    136,1,100,0,11,2,150,0,1,0,24,0,14,0,31,0,34,0,31,0,55,0,31,0,75,0,31,0,95,0,31,0,116,0,31,0,136,0,31,0,  // colorTemp 0
-    157,0,31,0,177,0,31,0,1,1,19,0,10,3,31,1,30,1,31,8,50,1,31,19,71,8,31,31,91,28,31,31,112,48,31,31,132,69,31,31,  // colorTemp 1
-    152,89,31,31,173,110,31,31,1,3,17,2,5,1,31,10,25,1,31,22,46,12,31,31,66,32,31,31,86,53,31,31,107,73,31,31,127,94,31,31,  // colorTemp 2
-    148,114,31,31,168,134,31,31,1,2,14,7,1,1,29,18,20,6,31,31,40,27,31,31,61,47,31,31,81,67,31,31,101,88,31,31,122,108,31,31,  // colorTemp 3
-    142,129,31,31,162,149,31,31,2,1,10,12,1,1,23,26,13,16,31,31,34,37,31,31,54,57,31,31,74,78,31,31,95,98,31,31,115,118,31,31,  // colorTemp 4
-    136,139,31,31,156,159,31,31,1,2,7,16,1,4,17,31,5,24,31,31,26,45,31,31,46,65,31,31,66,86,31,31,87,106,31,31,107,126,31,31,  // colorTemp 5
-    128,147,31,31,148,167,31,31,3,1,3,21,2,11,11,31,1,31,25,31,15,51,31,31,36,72,31,31,56,92,31,31,76,113,31,31,97,133,31,31,  // colorTemp 6
-    117,153,31,31,138,174,31,31,2,1,0,26,2,16,5,31,2,37,14,31,1,57,31,31,21,77,31,31,42,98,31,31,62,118,31,31,82,138,31,31,  // colorTemp 7
-    103,159,31,31,123,179,31,31,1,1,0,26,1,21,0,31,1,41,4,31,1,62,12,31,1,82,26,31,17,102,31,31,37,123,31,31,58,143,31,31,  // colorTemp 8
-    78,164,31,31,98,184,31,31,0,5,0,31,0,25,0,31,0,46,0,31,0,66,0,31,0,86,0,31,0,107,0,31,0,127,0,31,0,147,0,31,  // colorTemp 9
+    136, 1,   100, 0,  11,  2,   150, 0,  1,  0,   24, 0,  14,  0,   31, 0,  34,  0,   31, 0,
+    55,  0,   31,  0,  75,  0,   31,  0,  95, 0,   31, 0,  116, 0,   31, 0,  136, 0,   31, 0,  // colorTemp 0
+    157, 0,   31,  0,  177, 0,   31,  0,  1,  1,   19, 0,  10,  3,   31, 1,  30,  1,   31, 8,
+    50,  1,   31,  19, 71,  8,   31,  31, 91, 28,  31, 31, 112, 48,  31, 31, 132, 69,  31, 31,  // colorTemp 1
+    152, 89,  31,  31, 173, 110, 31,  31, 1,  3,   17, 2,  5,   1,   31, 10, 25,  1,   31, 22,
+    46,  12,  31,  31, 66,  32,  31,  31, 86, 53,  31, 31, 107, 73,  31, 31, 127, 94,  31, 31,  // colorTemp 2
+    148, 114, 31,  31, 168, 134, 31,  31, 1,  2,   14, 7,  1,   1,   29, 18, 20,  6,   31, 31,
+    40,  27,  31,  31, 61,  47,  31,  31, 81, 67,  31, 31, 101, 88,  31, 31, 122, 108, 31, 31,  // colorTemp 3
+    142, 129, 31,  31, 162, 149, 31,  31, 2,  1,   10, 12, 1,   1,   23, 26, 13,  16,  31, 31,
+    34,  37,  31,  31, 54,  57,  31,  31, 74, 78,  31, 31, 95,  98,  31, 31, 115, 118, 31, 31,  // colorTemp 4
+    136, 139, 31,  31, 156, 159, 31,  31, 1,  2,   7,  16, 1,   4,   17, 31, 5,   24,  31, 31,
+    26,  45,  31,  31, 46,  65,  31,  31, 66, 86,  31, 31, 87,  106, 31, 31, 107, 126, 31, 31,  // colorTemp 5
+    128, 147, 31,  31, 148, 167, 31,  31, 3,  1,   3,  21, 2,   11,  11, 31, 1,   31,  25, 31,
+    15,  51,  31,  31, 36,  72,  31,  31, 56, 92,  31, 31, 76,  113, 31, 31, 97,  133, 31, 31,  // colorTemp 6
+    117, 153, 31,  31, 138, 174, 31,  31, 2,  1,   0,  26, 2,   16,  5,  31, 2,   37,  14, 31,
+    1,   57,  31,  31, 21,  77,  31,  31, 42, 98,  31, 31, 62,  118, 31, 31, 82,  138, 31, 31,  // colorTemp 7
+    103, 159, 31,  31, 123, 179, 31,  31, 1,  1,   0,  26, 1,   21,  0,  31, 1,   41,  4,  31,
+    1,   62,  12,  31, 1,   82,  26,  31, 17, 102, 31, 31, 37,  123, 31, 31, 58,  143, 31, 31,  // colorTemp 8
+    78,  164, 31,  31, 98,  184, 31,  31, 0,  5,   0,  31, 0,   25,  0,  31, 0,   46,  0,  31,
+    0,   66,  0,   31, 0,   86,  0,   31, 0,  107, 0,  31, 0,   127, 0,  31, 0,   147, 0,  31,  // colorTemp 9
 };
 }  // namespace
 
@@ -543,8 +556,15 @@ void FrontlightManager::apply() {
   uint32_t warmDuty = 0;
   uint32_t coolDuty = totalDuty;
   if (dual) {
+#if FREEINK_FRONTLIGHT_DITHER && FREEINK_DEVICE_X4PRO
+    const float exactDuty = _useRawDuty ? _rawDuty : static_cast<float>(totalDuty);
+    const auto sample = _pwmDither.next(exactDuty, _warmPercent, full);
+    warmDuty = sample.warm;
+    coolDuty = sample.cool;
+#else
     warmDuty = (totalDuty * _warmPercent + 50u) / 100u;
     coolDuty = totalDuty - warmDuty;
+#endif
   }
 #ifdef FREEINK_FRONTLIGHT_LS
   updateLsKeepAlive(totalDuty != 0);
@@ -570,7 +590,7 @@ void FrontlightManager::apply() {
     writeChannel(fl.gpioWarm, LEDC_CH_WARM, physicalDuty(warmDuty, full, fl.activeHigh));
   }
   LOG_DBG("FrontlightMgr", "apply: brightness=%u level=%u totalDuty=%u coolDuty=%u warmDuty=%u lit=%d", _brightness,
-           _brightnessLevel, totalDuty, coolDuty, warmDuty, totalDuty != 0 ? 1 : 0);
+          _brightnessLevel, totalDuty, coolDuty, warmDuty, totalDuty != 0 ? 1 : 0);
 }
 
 #ifdef FREEINK_FRONTLIGHT_LS
@@ -670,9 +690,10 @@ void FrontlightManager::setBrightness(uint8_t percent) {
 #endif
 }
 
-void FrontlightManager::setTotalDuty(uint32_t duty) {
+void FrontlightManager::setTotalDuty(float duty) {
 #if FREEINK_CAP_FRONTLIGHT
-  _rawDuty = duty;
+  const float full = static_cast<float>(maxDuty(BoardConfig::ACTIVE.frontlight.pwmResolutionBits));
+  _rawDuty = !std::isfinite(duty) || duty < 0.0f ? 0.0f : (duty > full ? full : duty);
   _useRawDuty = true;
   apply();
 #else
