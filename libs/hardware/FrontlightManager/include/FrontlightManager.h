@@ -40,6 +40,8 @@ class FrontlightManager {
   // Raw total duty, without a curve. Debug X4 Pro retains its fraction and quantizes each channel separately.
   // brightness()/brightnessLevel() keep their values. Repeat while needsPwmDither() is true.
   void setTotalDuty(float duty);
+  // Fractional channel mixing is allowed up to this total duty, inclusive; zero disables it.
+  void setPwmDitherLimit(uint32_t duty);
   bool needsPwmDither() const {
 #if FREEINK_FRONTLIGHT_DITHER && FREEINK_DEVICE_X4PRO
     return _pwmDither.pending();
@@ -188,6 +190,7 @@ class FrontlightManager {
   float _rawDuty = 0.0f;
 #if FREEINK_FRONTLIGHT_DITHER && FREEINK_DEVICE_X4PRO
   FrontlightPwmDither _pwmDither;
+  uint32_t _pwmDitherLimit = UINT32_MAX;
 #endif
   // Duty written by the previous apply(); 0 = the light was off. The off->on
   // edge is what arms the boost kick-start (see apply()).

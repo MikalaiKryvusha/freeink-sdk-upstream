@@ -558,9 +558,15 @@ void FrontlightManager::apply() {
   if (dual) {
 #if FREEINK_FRONTLIGHT_DITHER && FREEINK_DEVICE_X4PRO
     const float exactDuty = _useRawDuty ? _rawDuty : static_cast<float>(totalDuty);
-    const auto sample = _pwmDither.next(exactDuty, _warmPercent, full);
-    warmDuty = sample.warm;
-    coolDuty = sample.cool;
+    if (_pwmDitherLimit > 0 && exactDuty <= static_cast<float>(_pwmDitherLimit)) {
+      const auto sample = _pwmDither.next(exactDuty, _warmPercent, full);
+      warmDuty = sample.warm;
+      coolDuty = sample.cool;
+    } else {
+      _pwmDither.reset();
+      warmDuty = (totalDuty * _warmPercent + 50u) / 100u;
+      coolDuty = totalDuty - warmDuty;
+    }
 #else
     warmDuty = (totalDuty * _warmPercent + 50u) / 100u;
     coolDuty = totalDuty - warmDuty;
@@ -695,6 +701,16 @@ void FrontlightManager::setTotalDuty(float duty) {
   const float full = static_cast<float>(maxDuty(BoardConfig::ACTIVE.frontlight.pwmResolutionBits));
   _rawDuty = !std::isfinite(duty) || duty < 0.0f ? 0.0f : (duty > full ? full : duty);
   _useRawDuty = true;
+  apply();
+#else
+  (void)duty;
+#endif
+}
+
+void FrontlightManager::setPwmDitherLimit(uint32_t duty) {
+#if FREEINK_FRONTLIGHT_DITHER && FREEINK_DEVICE_X4PRO
+  if (_pwmDitherLimit == duty) return;
+  _pwmDitherLimit = duty;
   apply();
 #else
   (void)duty;

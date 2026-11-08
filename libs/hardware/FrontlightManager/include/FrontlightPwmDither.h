@@ -25,6 +25,12 @@ class FrontlightPwmDither {
 
   bool pending() const { return needsUpdates; }
 
+  void reset() {
+    coolError = 0.0f;
+    warmError = 0.0f;
+    needsUpdates = false;
+  }
+
  private:
   static uint32_t quantize(float target, float& error) {
     if (target <= 0.0f) {
